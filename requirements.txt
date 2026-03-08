@@ -1,0 +1,6 @@
+openai
+pyairtable
+google-genai
+requests
+schedule
+python-dotenv
