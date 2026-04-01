@@ -116,8 +116,8 @@ def run_automation(automation: dict):
                     body=record["body"],
                     image_style=image_style,
                     is_hook=record["is_hook"],
-                    cover_ref_attachments=cover_ref_attachments,
-                    slide_ref_attachments=slide_ref_attachments,
+                    cover_ref_attachments=None,
+                    slide_ref_attachments=None,
                 )
                 time.sleep(12)  # Rate limit buffer for Gemini
 
