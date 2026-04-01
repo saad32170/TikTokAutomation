@@ -48,14 +48,16 @@ def _build_prompt(title: str, body: str, image_style: str, is_hook: bool) -> str
     parts = [
         f"Create a TikTok slideshow {slide_type} image.",
         f"Visual style: {image_style}.",
-        f"Render the following text directly on the image as a bold readable overlay:",
+        f"Render the following text directly on the image as a bold readable overlay, "
+        f"positioned in the lower third of the image:",
         f"Title: \"{title}\"",
     ]
     if body:
         parts.append(f"Body: \"{body}\"")
     parts.append(
         "Requirements: vertical 9:16 portrait format, "
-        "text must be clearly legible with strong contrast against the background, "
+        "text positioned in the lower third with a semi-transparent dark background panel behind it for contrast, "
+        "text must be clearly legible, "
         "visually striking, social media optimized, single image only, no collages or grids."
     )
     return " ".join(parts)
@@ -140,10 +142,10 @@ def generate_cta_slide_image(
     prompt = (
         "You are given an app screenshot. Use it as the base for a TikTok CTA slide. "
         "Keep the screenshot visible and recognizable — do not replace or cover it entirely. "
-        "Add a bold, high-contrast CTA text overlay on top: "
+        "Add a bold, high-contrast CTA text overlay positioned in the lower third of the image: "
         f"Title: \"{title}\" — large, prominent text. "
         f"Body: \"{body}\" — smaller text below the title. "
-        "Add minimal graphic elements to make the text readable (e.g. a semi-transparent panel or gradient). "
+        "Add a semi-transparent dark panel behind the text so it is clearly legible. "
         "Vertical 9:16 portrait format. Social media optimized. Single image only."
     )
 
