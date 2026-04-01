@@ -87,6 +87,31 @@ def update_automation_last_run(automation_id: str):
     _table("Automations").update(automation_id, {"last_run": datetime.now().isoformat()})
 
 
+def increment_post_count(automation_id: str):
+    """
+    Increment post_count by 1 for creative fatigue tracking.
+    Implements #8/#13.
+    """
+    table = _table("Automations")
+    record = table.get(automation_id)
+    current = record["fields"].get("post_count", 0) or 0
+    try:
+        table.update(automation_id, {"post_count": int(current) + 1})
+    except Exception as e:
+        print(f"[airtable] WARNING: Could not update post_count: {e}")
+
+
+def update_last_refresh(automation_id: str):
+    """
+    Write current ISO timestamp to last_refresh for creative cadence tracking.
+    Implements #26.
+    """
+    try:
+        _table("Automations").update(automation_id, {"last_refresh": datetime.now().isoformat()})
+    except Exception as e:
+        print(f"[airtable] WARNING: Could not update last_refresh: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Slideshows
 # ---------------------------------------------------------------------------
