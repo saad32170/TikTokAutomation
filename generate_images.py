@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GEMINI_MODEL = "gemini-3.1-flash-image-preview"  # Nano Banana 2
+GEMINI_MODEL = "gemini-2.5-flash-image"  # Nano Banana
 
 _gemini_client = None
 
@@ -48,12 +48,14 @@ def _build_prompt(title: str, body: str, image_style: str, is_hook: bool) -> str
     parts = [
         f"Create a TikTok slideshow {slide_type} image.",
         f"Visual style: {image_style}.",
-        f"Slide title: {title}.",
+        f"Render the following text directly on the image as a bold readable overlay:",
+        f"Title: \"{title}\"",
     ]
     if body:
-        parts.append(f"Slide context: {body}.")
+        parts.append(f"Body: \"{body}\"")
     parts.append(
-        "Requirements: vertical 9:16 portrait format, no text overlay, "
+        "Requirements: vertical 9:16 portrait format, "
+        "text must be clearly legible with strong contrast against the background, "
         "visually striking, social media optimized, single image only, no collages or grids."
     )
     return " ".join(parts)
@@ -114,3 +116,52 @@ def generate_slide_image(
             return part.inline_data.data
 
     raise ValueError(f"Gemini returned no image for prompt: {text_prompt[:100]}...")
+
+
+def generate_cta_slide_image(
+    title: str,
+    body: str,
+    screenshot_bytes: bytes,
+) -> bytes:
+    """
+    Generate a CTA slide using an app screenshot as the base.
+    Gemini composites CTA text and graphics on top of the screenshot.
+
+    Args:
+        title:            CTA heading (e.g. "Try Dreamveil Free").
+        body:             CTA body (e.g. "Link in bio.").
+        screenshot_bytes: Raw bytes of the app screenshot to use as base.
+
+    Returns:
+        Raw PNG image bytes.
+    """
+    client = _get_gemini_client()
+
+    prompt = (
+        "You are given an app screenshot. Use it as the base for a TikTok CTA slide. "
+        "Keep the screenshot visible and recognizable — do not replace or cover it entirely. "
+        "Add a bold, high-contrast CTA text overlay on top: "
+        f"Title: \"{title}\" — large, prominent text. "
+        f"Body: \"{body}\" — smaller text below the title. "
+        "Add minimal graphic elements to make the text readable (e.g. a semi-transparent panel or gradient). "
+        "Vertical 9:16 portrait format. Social media optimized. Single image only."
+    )
+
+    contents = [
+        types.Part.from_bytes(data=screenshot_bytes, mime_type="image/png"),
+        types.Part.from_text(text=prompt),
+    ]
+
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            response_modalities=["TEXT", "IMAGE"],
+        ),
+    )
+
+    for part in response.candidates[0].content.parts:
+        if part.inline_data is not None:
+            return part.inline_data.data
+
+    raise ValueError("Gemini returned no image for CTA slide.")

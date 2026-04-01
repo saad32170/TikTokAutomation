@@ -1,73 +1,94 @@
 """
-publish.py — TikTok publishing via Blotato API.
-
-Each automation has its own tiktok_account_id column in the Automations sheet,
-so 4 brands post to 4 separate TikTok accounts with their own content.
-
-All publishing code is commented out. Uncomment when ready to go live.
+publish.py — TikTok publishing via Blotato API v2.
 """
 
-# import os
-# import requests
-# from dotenv import load_dotenv
-#
-# load_dotenv()
-#
-# BLOTATO_API_KEY = os.getenv("BLOTATO_API_KEY")
-# BLOTATO_BASE_URL = "https://api.blotato.com/v1"
-#
-#
-# def publish_to_tiktok(automation: dict, slideshow: dict, slides: list[dict]):
-#     """
-#     Publish a completed slideshow to the TikTok account linked to this automation.
-#
-#     Args:
-#         automation: Automation row dict — must include 'tiktok_account_id'.
-#         slideshow:  Slideshow row dict — must include 'hook'.
-#         slides:     List of slide dicts — must include 'slide_number', 'image_url'.
-#     """
-#     if not BLOTATO_API_KEY:
-#         raise ValueError("BLOTATO_API_KEY env var is not set.")
-#
-#     tiktok_account_id = str(automation.get("tiktok_account_id", "")).strip()
-#     if not tiktok_account_id:
-#         raise ValueError(
-#             f"No tiktok_account_id set for automation '{automation.get('name')}'. "
-#             "Add it to the Automations tab in Google Sheets."
-#         )
-#
-#     # Sort slides by slide_number so they appear in the correct order
-#     ordered_slides = sorted(slides, key=lambda s: int(s["slide_number"]))
-#     image_urls = [s["image_url"] for s in ordered_slides if s.get("image_url")]
-#
-#     if not image_urls:
-#         raise ValueError("No image URLs found in slides — cannot publish.")
-#
-#     caption = slideshow.get("hook", "")
-#
-#     payload = {
-#         "account_id": tiktok_account_id,
-#         "platform": "tiktok",
-#         "media_type": "slideshow",
-#         "images": image_urls,
-#         "caption": caption,
-#         "music": True,
-#         "is_ai_generated": True,
-#     }
-#
-#     headers = {
-#         "Authorization": f"Bearer {BLOTATO_API_KEY}",
-#         "Content-Type": "application/json",
-#     }
-#
-#     response = requests.post(
-#         f"{BLOTATO_BASE_URL}/posts",
-#         json=payload,
-#         headers=headers,
-#         timeout=60,
-#     )
-#     response.raise_for_status()
-#
-#     result = response.json()
-#     print(f"[publish] '{automation.get('name')}' posted to TikTok: {result.get('id', 'unknown')}")
-#     return result
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BLOTATO_API_KEY = os.getenv("BLOTATO_API_KEY")
+BASE_URL = "https://backend.blotato.com/v2"
+
+
+def _headers():
+    if not BLOTATO_API_KEY:
+        raise ValueError("BLOTATO_API_KEY env var is not set.")
+    return {
+        "blotato-api-key": BLOTATO_API_KEY,
+        "Content-Type": "application/json",
+    }
+
+
+def upload_media(image_bytes: bytes) -> str:
+    """
+    Upload raw image bytes to Blotato media endpoint.
+    Blotato /v2/media accepts a URL, so we use a data URI (base64).
+    Returns the Blotato-hosted public URL.
+    """
+    import base64
+    b64 = base64.b64encode(image_bytes).decode("utf-8")
+    data_url = f"data:image/png;base64,{b64}"
+
+    resp = requests.post(
+        f"{BASE_URL}/media",
+        json={"url": data_url},
+        headers=_headers(),
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()["url"]
+
+
+def publish_to_tiktok(automation: dict, hook: str, image_urls: list[str]) -> dict:
+    """
+    Publish a completed slideshow to TikTok via Blotato.
+
+    Args:
+        automation:  Automation row — must include 'tiktok_account_id'.
+        hook:        Caption text.
+        image_urls:  Ordered list of Blotato-hosted public image URLs.
+    """
+    account_id = str(automation.get("tiktok_account_id", "")).strip()
+    if not account_id:
+        raise ValueError(
+            f"No tiktok_account_id set for automation '{automation.get('name')}'. "
+            "Add it to the Automations table in Airtable."
+        )
+
+    if not image_urls:
+        raise ValueError("No image URLs — cannot publish.")
+
+    payload = {
+        "post": {
+            "accountId": account_id,
+            "content": {
+                "text": hook,
+                "mediaUrls": image_urls,
+                "platform": "tiktok",
+            },
+            "target": {
+                "targetType": "tiktok",
+                "privacyLevel": "PUBLIC_TO_EVERYONE",
+                "disabledComments": False,
+                "disabledDuet": False,
+                "disabledStitch": False,
+                "isBrandedContent": False,
+                "isYourBrand": False,
+                "isAiGenerated": True,
+                "autoAddMusic": True,
+            },
+        }
+    }
+
+    resp = requests.post(
+        f"{BASE_URL}/posts",
+        json=payload,
+        headers=_headers(),
+        timeout=60,
+    )
+    resp.raise_for_status()
+    result = resp.json()
+    print(f"[publish] '{automation.get('name')}' posted to TikTok: {result.get('postSubmissionId', 'unknown')}")
+    return result

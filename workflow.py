@@ -2,13 +2,14 @@
 workflow.py — Orchestrates one full automation run end-to-end.
 """
 
+import random
 import time
 import traceback
 
 import airtable
 import generate_text
 import generate_images
-# import publish  # uncomment when Blotato publishing is enabled
+import publish
 
 
 def run_automation(automation: dict):
@@ -89,42 +90,61 @@ def run_automation(automation: dict):
     cover_ref_attachments = automation.get("cover_ref", []) or []
     slide_ref_attachments = automation.get("slide_refs", []) or []
 
+    last_slide_number = max(r["slide_number"] for r in slide_records if not r["is_hook"])
+
     for record in slide_records:
         slide_id = record["slide_id"]
-        print(f"[workflow] Generating image for slide {record['slide_number']}...")
+        slide_num = record["slide_number"]
+        print(f"[workflow] Generating image for slide {slide_num}...")
         try:
-            image_bytes = generate_images.generate_slide_image(
-                title=record["title"],
-                body=record["body"],
-                image_style=image_style,
-                is_hook=record["is_hook"],
-                cover_ref_attachments=cover_ref_attachments,
-                slide_ref_attachments=slide_ref_attachments,
-            )
-            airtable.upload_slide_image(slide_id, image_bytes)
-            print(f"[workflow] Slide {record['slide_number']} image uploaded to Airtable.")
-        except Exception:
-            print(f"[workflow] WARNING: Image generation failed for slide {record['slide_number']}:")
-            traceback.print_exc()
+            # Last slide: composite CTA text onto a random app screenshot
+            if slide_num == last_slide_number and slide_ref_attachments:
+                ref = random.choice(slide_ref_attachments)
+                screenshot_bytes = generate_images._fetch_image_bytes(ref.get("url", ""))
+                if not screenshot_bytes:
+                    raise ValueError("Could not fetch screenshot for CTA slide.")
+                print(f"[workflow] Slide {slide_num} CTA using screenshot: {ref.get('filename', '')}")
+                image_bytes = generate_images.generate_cta_slide_image(
+                    title=record["title"],
+                    body=record["body"],
+                    screenshot_bytes=screenshot_bytes,
+                )
+                time.sleep(12)
+            else:
+                image_bytes = generate_images.generate_slide_image(
+                    title=record["title"],
+                    body=record["body"],
+                    image_style=image_style,
+                    is_hook=record["is_hook"],
+                    cover_ref_attachments=cover_ref_attachments,
+                    slide_ref_attachments=slide_ref_attachments,
+                )
+                time.sleep(12)  # Rate limit buffer for Gemini
 
-        # Rate limit buffer for Gemini preview model
-        time.sleep(12)
+            airtable.upload_slide_image(slide_id, image_bytes)
+            public_url = publish.upload_media(image_bytes)
+            record["image_url"] = public_url
+            print(f"[workflow] Slide {slide_num} ready.")
+        except Exception:
+            print(f"[workflow] WARNING: Image failed for slide {slide_num}:")
+            traceback.print_exc()
             # Continue — partial image failures should not block the whole run
 
     # ------------------------------------------------------------------
-    # Step 5 — Mark slideshow ready (publishing commented out)
+    # Step 5 — Publish to TikTok via Blotato
     # ------------------------------------------------------------------
-    airtable.update_slideshow_status(slideshow_id, "ready")
+    ordered_urls = [
+        r["image_url"]
+        for r in sorted(slide_records, key=lambda r: r["slide_number"])
+        if r.get("image_url")
+    ]
 
-    # Uncomment the block below to enable TikTok publishing via Blotato:
-    # -----------------------------------------------------------------
-    # all_slide_dicts = [
-    #     {"slide_number": r["slide_number"], "image_url": r.get("image_url", "")}
-    #     for r in slide_records
-    # ]
-    # publish.publish_to_tiktok(automation, {"hook": hook}, all_slide_dicts)
-    # airtable.update_slideshow_status(slideshow_id, "published")
-    # -----------------------------------------------------------------
+    if ordered_urls:
+        publish.publish_to_tiktok(automation, hook, ordered_urls)
+        airtable.update_slideshow_status(slideshow_id, "published")
+    else:
+        print(f"[workflow] WARNING: No images were generated — skipping publish.")
+        airtable.update_slideshow_status(slideshow_id, "ready")
 
     # ------------------------------------------------------------------
     # Step 6 — Update last_run timestamp
