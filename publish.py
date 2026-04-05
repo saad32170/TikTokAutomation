@@ -61,7 +61,10 @@ def publish_to_linkedin(automation: dict, caption: str, image_urls: list[str]) -
     Publish a completed carousel to LinkedIn via Blotato.
 
     Args:
-        automation:  Automation row — must include 'linkedin_account_id'.
+        automation:  Automation row — must include 'linkedin_account_id' (Blotato).
+            Optional 'linkedin_id' — LinkedIn company page ID from Blotato subaccounts;
+            passed as target.pageId. Omit for personal profile only.
+            See https://help.blotato.com/platforms/linkedin/faqs
         caption:     Post caption (SEO-enriched, ≤150 chars).
         image_urls:  Ordered list of Blotato-hosted public image URLs.
     """
@@ -74,6 +77,14 @@ def publish_to_linkedin(automation: dict, caption: str, image_urls: list[str]) -
     if not image_urls:
         raise ValueError("No image URLs — cannot publish.")
 
+    page_id = str(automation.get("linkedin_id", "")).strip()
+    target = {
+        "targetType": "linkedin",
+        "visibility": "PUBLIC",
+    }
+    if page_id:
+        target["pageId"] = page_id
+
     payload = {
         "post": {
             "accountId": account_id,
@@ -82,10 +93,7 @@ def publish_to_linkedin(automation: dict, caption: str, image_urls: list[str]) -
                 "mediaUrls": image_urls,
                 "platform":  "linkedin",
             },
-            "target": {
-                "targetType": "linkedin",
-                "visibility": "PUBLIC",
-            },
+            "target": target,
         }
     }
 
